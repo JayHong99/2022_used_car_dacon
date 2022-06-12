@@ -1,60 +1,28 @@
-from sklearn.linear_model import LinearRegression
-from sklearn.ensemble import RandomForestRegressor, ExtraTreesRegressor
-from lightgbm import LGBMRegressor
-from xgboost import XGBRegressor
+from sklearn.ensemble import RandomForestRegressor
 import numpy as np
+import pandas as pd
 
-def NMAE(true : np.array, pred : np.array
-    ) -> float:
-    mae = np.mean(np.abs(true-pred))
-    score = mae / np.mean(np.abs(true))
-    return score
+from src.bayesian import optimize
+from src.shap import shap_explain
 
-class modeling : 
-    def __init__(self, X_train : np.array, X_test : np.array, y_train : np.array, y_test : np.array) : 
-        self.X_train = X_train
-        self.X_test = X_test
-        self.y_train = y_train
-        self.y_test = y_test
+
+
+class RF : 
+    def __init__(self, train : pd.DataFrame, test : pd.DataFrame, pbounds : dict) :  
+        self.X = train.drop(columns = ['target'])
+        self.feature_names = list(self.X.columns)
+        self.X = self.X.to_numpy()
+        self.y = train[['target']].to_numpy().reshape(-1)
+        self.test = test.to_numpy()
+        self.pbounds = pbounds
     
-    def train(self, model) : 
-        model.fit(self.X_train, self.y_train)
+    def get_best_model(self, init_points, n_iters) -> None : 
+        opti = optimize(self.X, self.y, self.pbounds)
+        self.model = opti(init_points, n_iters)
+        self.model.fit(self.X, self.y)
     
-    def valid(self, model) -> np.array : 
-        model_name = model.__class__.__name__
-        pred = model.predict(self.X_test)
-        pred[pred < 0] = 0
-        if self.y_test is not None : 
-            score = self.score(pred)
-            print(f'{model_name} VALIDATION SCORE : {score:.4f}')
-        return pred
-    
-    def score(self, pred) : 
-        score = NMAE(self.y_test, pred)
-        return score
+    def predict(self) : 
+        return self.model.predict(self.test)
 
-
-    def linear_regression(self) : 
-        model = LinearRegression()
-        self.train(model)
-        return self.valid(model)
-
-    def rf(self) : 
-        model = RandomForestRegressor()
-        self.train(model)
-        return self.valid(model)
-    
-    def ext(self) : 
-        model = ExtraTreesRegressor()
-        self.train(model)
-        return self.valid(model)
-
-    def lgbm(self) : 
-        model = LGBMRegressor()
-        self.train(model)
-        return self.valid(model)
-    
-    def xgb(self) : 
-        model = XGBRegressor()
-        self.train(model)
-        return self.valid(model)
+    def explain(self) : 
+        shap_explain(self.model, self.X, self.feature_names)
